@@ -1352,6 +1352,19 @@ asm_function jsimd_idct_2x2_neon
         .else
             .error unsupported macroblock size
         .endif
+    .elseif \bpp == 16
+        .if \size == 8
+            vst1.16  {q15}, [RGB]!
+        .elseif \size == 4
+            vst1.16  {d30}, [RGB]!
+        .elseif \size == 2
+            vst1.16  {d31[0]}, [RGB]!
+            vst1.16  {d31[1]}, [RGB]!
+        .elseif \size == 1
+            vst1.16  {d31[2]}, [RGB]!
+        .else
+            .error unsupported macroblock size
+        .endif
     .else
         .error unsupported bpp
     .endif
@@ -1386,9 +1399,17 @@ asm_function jsimd_idct_2x2_neon
     vaddw.u8        q11, q10, d0
     vaddw.u8        q12, q12, d0
     vaddw.u8        q14, q14, d0
+.if \bpp != 16
     vqmovun.s16     d1\g_offs, q11
     vqmovun.s16     d1\r_offs, q12
     vqmovun.s16     d1\b_offs, q14
+.else /* rgb565 */
+    vqshlu.s16      q13, q11, #8
+    vqshlu.s16      q15, q12, #8
+    vqshlu.s16      q14, q14, #8
+    vsri.u16        q15, q13, #5
+    vsri.u16        q15, q14, #11
+.endif
 .endm
 
 .macro do_yuv_to_rgb_stage2_store_load_stage1
@@ -1411,6 +1432,7 @@ asm_function jsimd_idct_2x2_neon
     vmlal.s16       q10, d8, d1[2]
                                             vaddw.u8        q12, q12, d0
                                             vaddw.u8        q14, q14, d0
+.if \bpp != 16 /**************** rgb24/rgb32 **********************************/
                                             vqmovun.s16     d1\g_offs, q11
     pld             [Y, #64]
                                             vqmovun.s16     d1\r_offs, q12
@@ -1423,6 +1445,22 @@ asm_function jsimd_idct_2x2_neon
     vmull.s16       q13, d9, d1[0]
     vmull.s16       q14, d6, d1[3]
     vmull.s16       q15, d7, d1[3]
+.else /**************************** rgb565 ************************************/
+                                            vqshlu.s16      q13, q11, #8
+    pld             [Y, #64]
+                                            vqshlu.s16      q15, q12, #8
+                                            vqshlu.s16      q14, q14, #8
+    vld1.8          {d0}, [Y, :64]!
+    vmull.s16       q11, d7, d1[1]
+    vmlal.s16       q11, d9, d1[2]
+                                            vsri.u16        q15, q13, #5
+    vmull.s16       q12, d8, d1[0]
+                                            vsri.u16        q15, q14, #11
+    vmull.s16       q13, d9, d1[0]
+    vmull.s16       q14, d6, d1[3]
+                                            do_store        \bpp, 8
+    vmull.s16       q15, d7, d1[3]
+.endif
 .endm
 
 .macro do_yuv_to_rgb
@@ -1558,13 +1596,14 @@ asm_function jsimd_ycc_\colorid\()_convert_neon
 
 .endm
 
-/*--------------------------------- id ----- bpp R  G  B */
-generate_jsimd_ycc_rgb_convert_neon extrgb,  24, 0, 1, 2
-generate_jsimd_ycc_rgb_convert_neon extbgr,  24, 2, 1, 0
-generate_jsimd_ycc_rgb_convert_neon extrgbx, 32, 0, 1, 2
-generate_jsimd_ycc_rgb_convert_neon extbgrx, 32, 2, 1, 0
-generate_jsimd_ycc_rgb_convert_neon extxbgr, 32, 3, 2, 1
-generate_jsimd_ycc_rgb_convert_neon extxrgb, 32, 1, 2, 3
+/*--------------------------------- id ------- bpp R  G  B */
+generate_jsimd_ycc_rgb_convert_neon extrgb,    24, 0, 1, 2
+generate_jsimd_ycc_rgb_convert_neon extbgr,    24, 2, 1, 0
+generate_jsimd_ycc_rgb_convert_neon extrgbx,   32, 0, 1, 2
+generate_jsimd_ycc_rgb_convert_neon extbgrx,   32, 2, 1, 0
+generate_jsimd_ycc_rgb_convert_neon extxbgr,   32, 3, 2, 1
+generate_jsimd_ycc_rgb_convert_neon extxrgb,   32, 1, 2, 3
+generate_jsimd_ycc_rgb_convert_neon extrgb565, 16, 0, 0, 0
 
 .purgem do_load
 .purgem do_store
