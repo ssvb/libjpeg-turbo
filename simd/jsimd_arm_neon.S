@@ -1383,44 +1383,46 @@ asm_function jsimd_idct_2x2_neon
     vrshrn.s32      d25, q13, #14
     vrshrn.s32      d28, q14, #14
     vrshrn.s32      d29, q15, #14
-    vaddw.u8        q10, q10, d0
+    vaddw.u8        q11, q10, d0
     vaddw.u8        q12, q12, d0
     vaddw.u8        q14, q14, d0
-    vqmovun.s16     d1\g_offs, q10
+    vqmovun.s16     d1\g_offs, q11
     vqmovun.s16     d1\r_offs, q12
     vqmovun.s16     d1\b_offs, q14
 .endm
 
 .macro do_yuv_to_rgb_stage2_store_load_stage1
-    vld1.8          {d4}, [U, :64]!
-      vrshrn.s32      d20, q10, #15
-      vrshrn.s32      d21, q11, #15
-      vrshrn.s32      d24, q12, #14
-      vrshrn.s32      d25, q13, #14
-      vrshrn.s32      d28, q14, #14
-    vld1.8          {d5}, [V, :64]!
-      vrshrn.s32      d29, q15, #14
-      vaddw.u8        q10, q10, d0
-      vaddw.u8        q12, q12, d0
-      vaddw.u8        q14, q14, d0
-      vqmovun.s16     d1\g_offs, q10
-    vld1.8          {d0}, [Y, :64]!
-      vqmovun.s16     d1\r_offs, q12
+                                            /* "do_yuv_to_rgb_stage2" and "store" */
+                                            vrshrn.s32      d20, q10, #15
+    /* "load" and "do_yuv_to_rgb_stage1" */
     pld             [U, #64]
+                                            vrshrn.s32      d21, q11, #15
     pld             [V, #64]
+                                            vrshrn.s32      d24, q12, #14
+                                            vrshrn.s32      d25, q13, #14
+    vld1.8          {d4}, [U, :64]!
+                                            vrshrn.s32      d28, q14, #14
+    vld1.8          {d5}, [V, :64]!
+                                            vrshrn.s32      d29, q15, #14
+    vaddw.u8        q3, q1, d4
+    vaddw.u8        q4, q1, d5
+                                            vaddw.u8        q11, q10, d0
+    vmull.s16       q10, d6, d1[1]
+    vmlal.s16       q10, d8, d1[2]
+                                            vaddw.u8        q12, q12, d0
+                                            vaddw.u8        q14, q14, d0
+                                            vqmovun.s16     d1\g_offs, q11
     pld             [Y, #64]
-      vqmovun.s16     d1\b_offs, q14
-    vaddw.u8        q3, q1, d4     /* q3 = u - 128 */
-    vaddw.u8        q4, q1, d5     /* q2 = v - 128 */
-      do_store        \bpp, 8
-    vmull.s16       q10, d6, d1[1] /* multiply by -11277 */
-    vmlal.s16       q10, d8, d1[2] /* multiply by -23401 */
-    vmull.s16       q11, d7, d1[1] /* multiply by -11277 */
-    vmlal.s16       q11, d9, d1[2] /* multiply by -23401 */
-    vmull.s16       q12, d8, d1[0] /* multiply by 22971 */
-    vmull.s16       q13, d9, d1[0] /* multiply by 22971 */
-    vmull.s16       q14, d6, d1[3] /* multiply by 29033 */
-    vmull.s16       q15, d7, d1[3] /* multiply by 29033 */
+                                            vqmovun.s16     d1\r_offs, q12
+    vld1.8          {d0}, [Y, :64]!
+                                            vqmovun.s16     d1\b_offs, q14
+    vmull.s16       q11, d7, d1[1]
+    vmlal.s16       q11, d9, d1[2]
+                                            do_store        \bpp, 8
+    vmull.s16       q12, d8, d1[0]
+    vmull.s16       q13, d9, d1[0]
+    vmull.s16       q14, d6, d1[3]
+    vmull.s16       q15, d7, d1[3]
 .endm
 
 .macro do_yuv_to_rgb
