@@ -1941,7 +1941,41 @@ generate_jsimd_ycc_rgb_convert_neon rgb565,  16, 0, .4h,   0, .4h,   0, .4h,   .
 .macro do_load bpp, size
     .if \bpp == 24
         .if \size == 8
+#ifdef LD3_IS_FAST
             ld3  {v10.8b, v11.8b, v12.8b}, [RGB], #24
+#else
+            ld1  {v10.b}[0], [RGB], #1
+            ld1  {v11.b}[0], [RGB], #1
+            ld1  {v12.b}[0], [RGB], #1
+
+            ld1  {v10.b}[1], [RGB], #1
+            ld1  {v11.b}[1], [RGB], #1
+            ld1  {v12.b}[1], [RGB], #1
+
+            ld1  {v10.b}[2], [RGB], #1
+            ld1  {v11.b}[2], [RGB], #1
+            ld1  {v12.b}[2], [RGB], #1
+
+            ld1  {v10.b}[3], [RGB], #1
+            ld1  {v11.b}[3], [RGB], #1
+            ld1  {v12.b}[3], [RGB], #1
+
+            ld1  {v10.b}[4], [RGB], #1
+            ld1  {v11.b}[4], [RGB], #1
+            ld1  {v12.b}[4], [RGB], #1
+
+            ld1  {v10.b}[5], [RGB], #1
+            ld1  {v11.b}[5], [RGB], #1
+            ld1  {v12.b}[5], [RGB], #1
+
+            ld1  {v10.b}[6], [RGB], #1
+            ld1  {v11.b}[6], [RGB], #1
+            ld1  {v12.b}[6], [RGB], #1
+
+            ld1  {v10.b}[7], [RGB], #1
+            ld1  {v11.b}[7], [RGB], #1
+            ld1  {v12.b}[7], [RGB], #1
+#endif
             prfm pldl1keep, [RGB, #128]
         .elseif \size == 4
             ld3  {v10.b, v11.b, v12.b}[0], [RGB], #3
@@ -1985,46 +2019,40 @@ generate_jsimd_ycc_rgb_convert_neon rgb565,  16, 0, .4h,   0, .4h,   0, .4h,   .
  */
 
 .macro do_rgb_to_yuv_stage1
-    ushll       v4.8h, v1\r_offs\().8b, #0 /* r = { d4, d5 } */
-    ushll       v6.8h, v1\g_offs\().8b, #0 /* g = { d6, d7 } */
-    ushll       v8.8h, v1\b_offs\().8b, #0 /* b = { d8, d9 } */
-    ins         v5.d[0], v4.d[1]
-    ins         v7.d[0], v6.d[1]
-    ins         v9.d[0], v8.d[1]
+    ushll       v4.8h, v1\r_offs\().8b, #0 /* r = v4 */
+    ushll       v6.8h, v1\g_offs\().8b, #0 /* g = v6 */
+    ushll       v8.8h, v1\b_offs\().8b, #0 /* b = v8 */
     rev64       v18.4s, v1.4s
     rev64       v26.4s, v1.4s
     rev64       v28.4s, v1.4s
     rev64       v30.4s, v1.4s
     umull       v14.4s, v4.4h, v0.h[0]
-    umull       v16.4s, v5.4h, v0.h[0]
+    umull2      v16.4s, v4.8h, v0.h[0]
     umlsl       v18.4s, v4.4h, v0.h[3]
-    umlsl       v26.4s, v5.4h, v0.h[3]
+    umlsl2      v26.4s, v4.8h, v0.h[3]
     umlal       v28.4s, v4.4h, v0.h[5]
-    umlal       v30.4s, v5.4h, v0.h[5]
+    umlal2      v30.4s, v4.8h, v0.h[5]
     umlal       v14.4s, v6.4h, v0.h[1]
-    umlal       v16.4s, v7.4h, v0.h[1]
+    umlal2      v16.4s, v6.8h, v0.h[1]
     umlsl       v18.4s, v6.4h, v0.h[4]
-    umlsl       v26.4s, v7.4h, v0.h[4]
+    umlsl2      v26.4s, v6.8h, v0.h[4]
     umlsl       v28.4s, v6.4h, v0.h[6]
-    umlsl       v30.4s, v7.4h, v0.h[6]
+    umlsl2      v30.4s, v6.8h, v0.h[6]
     umlal       v14.4s, v8.4h, v0.h[2]
-    umlal       v16.4s, v9.4h, v0.h[2]
+    umlal2      v16.4s, v8.8h, v0.h[2]
     umlal       v18.4s, v8.4h, v0.h[5]
-    umlal       v26.4s, v9.4h, v0.h[5]
+    umlal2      v26.4s, v8.8h, v0.h[5]
     umlsl       v28.4s, v8.4h, v0.h[7]
-    umlsl       v30.4s, v9.4h, v0.h[7]
+    umlsl2      v30.4s, v8.8h, v0.h[7]
 .endm
 
 .macro do_rgb_to_yuv_stage2
     rshrn       v20.4h, v14.4s, #16
-    rshrn       v21.4h, v16.4s, #16
     shrn        v22.4h, v18.4s, #16
-    shrn        v23.4h, v26.4s, #16
     shrn        v24.4h, v28.4s, #16
-    shrn        v25.4h, v30.4s, #16
-    ins         v20.d[1], v21.d[0]
-    ins         v22.d[1], v23.d[0]
-    ins         v24.d[1], v25.d[0]
+    rshrn2      v20.8h, v16.4s, #16
+    shrn2       v22.8h, v26.4s, #16
+    shrn2       v24.8h, v30.4s, #16
     xtn         v20.8b, v20.8h      /* v20 = y */
     xtn         v21.8b, v22.8h      /* v21 = u */
     xtn         v22.8b, v24.8h      /* v22 = v */
@@ -2035,51 +2063,15 @@ generate_jsimd_ycc_rgb_convert_neon rgb565,  16, 0, .4h,   0, .4h,   0, .4h,   .
     do_rgb_to_yuv_stage2
 .endm
 
+/* TODO: expand macros and interleave instructions if some in-order
+ *       ARM64 processor actually can dual-issue LOAD/STORE with ALU */
 .macro do_rgb_to_yuv_stage2_store_load_stage1
-      rshrn       v20.4h, v14.4s,  #16
-      rshrn       v21.4h, v16.4s,  #16
-      shrn        v22.4h, v18.4s,  #16
-    rev64       v18.4s, v1.4s
-      shrn        v23.4h, v26.4s, #16
-      ins         v20.d[1], v21.d[0]
-    rev64       v26.4s, v1.4s
-      shrn        v24.4h, v28.4s, #16
-      shrn        v25.4h, v30.4s, #16
-      ins         v22.d[1], v23.d[0]
+    do_rgb_to_yuv_stage2
     do_load     \bpp, 8
-      xtn         v20.8b, v20.8h /* dv0 = y */
-      ins         v24.d[1], v25.d[0]
-    ushll       v4.8h, v1\r_offs\().8b, #0 /* r = { v4.8h } */
-      xtn         v21.8b, v22.8h /* v21 = u */
-    ushll       v6.8h, v1\g_offs\().8b, #0    /* g = { v6.8h } */
-    ushll       v8.8h, v1\b_offs\().8b, #0    /* b = { v8.8h } */
-      xtn         v22.8b, v24.8h /* v22 = v */
-    ins         v5.d[0], v4.d[1]
-    ins         v7.d[0], v6.d[1]
-    ins         v9.d[0], v8.d[1]
-      st1         {v20.8b}, [Y], #8
-    umull       v14.4s, v4.4h, v0.h[0]
-    umull       v16.4s, v5.4h, v0.h[0]
-    umlsl       v18.4s,  v4.4h, v0.h[3]
-    umlal       v14.4s, v6.4h, v0.h[1]
-    umlal       v16.4s, v7.4h, v0.h[1]
-    umlsl       v18.4s, v6.4h, v0.h[4]
-    umlal       v14.4s, v8.4h, v0.h[2]
-    umlal       v16.4s, v9.4h, v0.h[2]
-    umlal       v18.4s,  v8.4h, v0.h[5]
-    rev64       v28.4s, v1.4s
-    rev64       v30.4s, v1.4s
-      st1         {v21.8b}, [U], #8
-    umlsl       v26.4s, v5.4h, v0.h[3]
-    umlal       v28.4s, v4.4h, v0.h[5]
-    umlal       v30.4s, v5.4h, v0.h[5]
-      st1         {v22.8b}, [V], #8
-    umlsl       v26.4s, v7.4h, v0.h[4]
-    umlsl       v28.4s, v6.4h, v0.h[6]
-    umlsl       v30.4s, v7.4h, v0.h[6]
-    umlal       v26.4s, v9.4h, v0.h[5]
-    umlsl       v28.4s, v8.4h, v0.h[7]
-    umlsl       v30.4s, v9.4h, v0.h[7]
+    st1         {v20.8b}, [Y], #8
+    st1         {v21.8b}, [U], #8
+    st1         {v22.8b}, [V], #8
+    do_rgb_to_yuv_stage1
 .endm
 
 .balign 16
