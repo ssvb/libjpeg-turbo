@@ -3020,15 +3020,14 @@ asm_function jsimd_h2v2_downsample_neon
     subs  TMP1, BLOCK_WIDTH, #1
     b.eq  3f
 2: /* columns */
-    ld2   {v0.8b, v1.8b}, [INPTR0], #16
-    ld2   {v2.8b, v3.8b}, [INPTR1], #16
+    ld1   {v0.16b}, [INPTR0], #16
+    ld1   {v1.16b}, [INPTR1], #16
+    mov   v4.16b, v16.16b
     subs  TMP1, TMP1, #1
-    uaddl v4.8h, v0.8b, v1.8b
-    uaddl v6.8h, v2.8b, v3.8b
-    add   v4.8h, v4.8h, v6.8h
-    add   v4.8h, v4.8h, v16.8h
-    shrn  v4.8b, v4.8h, #2
-    st1   {v4.8b}, [OUTPTR], #8
+    uadalp v4.8h, v0.16b
+    uadalp v4.8h, v1.16b
+    shrn  v6.8b, v4.8h, #2
+    st1   {v6.8b}, [OUTPTR], #8
     b.ne  2b
 3: /* last columns */
     ld1   {v0.16b}, [INPTR0]
