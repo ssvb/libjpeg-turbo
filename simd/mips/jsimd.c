@@ -92,13 +92,6 @@ init_simd(void)
 #endif
 }
 
-static const int mips_idct_ifast_coefs[4] = {
-  0x45404540,           /* FIX( 1.082392200 / 2) =  17734 = 0x4546 */
-  0x5A805A80,           /* FIX( 1.414213562 / 2) =  23170 = 0x5A82 */
-  0x76407640,           /* FIX( 1.847759065 / 2) =  30274 = 0x7642 */
-  0xAC60AC60            /* FIX(-2.613125930 / 4) = -21407 = 0xAC61 */
-};
-
 /* The following struct is borrowed from jdsample.c */
 typedef void (*upsample1_ptr) (j_decompress_ptr cinfo,
                                jpeg_component_info *compptr,
@@ -1039,10 +1032,8 @@ jsimd_can_idct_ifast(void)
   if (IFAST_SCALE_BITS != 2)
     return 0;
 
-#if defined(__MIPSEL__)
   if (simd_support & JSIMD_DSPR2)
     return 1;
-#endif
 
   return 0;
 }
@@ -1078,24 +1069,8 @@ jsimd_idct_ifast(j_decompress_ptr cinfo, jpeg_component_info *compptr,
                  JCOEFPTR coef_block, JSAMPARRAY output_buf,
                  JDIMENSION output_col)
 {
-  JCOEFPTR inptr;
-  IFAST_MULT_TYPE *quantptr;
-  DCTELEM workspace[DCTSIZE2];  /* buffers data between passes */
-
-  /* Pass 1: process columns from input, store into work array. */
-
-  inptr = coef_block;
-  quantptr = (IFAST_MULT_TYPE *)compptr->dct_table;
-
-  jsimd_idct_ifast_cols_dspr2(inptr, quantptr, workspace,
-                              mips_idct_ifast_coefs);
-
-  /* Pass 2: process rows from work array, store into output array. */
-  /* Note that we must descale the results by a factor of 8 == 2**3, */
-  /* and also undo the PASS1_BITS scaling. */
-
-  jsimd_idct_ifast_rows_dspr2(workspace, output_buf, output_col,
-                              mips_idct_ifast_coefs);
+  jsimd_idct_ifast_dspr2(coef_block, compptr->dct_table, output_buf,
+                         output_col);
 }
 
 GLOBAL(void)

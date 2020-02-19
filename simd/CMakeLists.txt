@@ -304,7 +304,11 @@ if(NOT HAVE_DSPR2)
   return()
 endif()
 
-add_library(simd OBJECT mips/jsimd_dspr2.S mips/jsimd.c)
+set(SIMD_SOURCES mips/jidctfst-dspr2.c)
+set_source_files_properties(${SIMD_SOURCES} PROPERTIES
+  COMPILE_FLAGS -mdspr2)
+
+add_library(simd OBJECT ${SIMD_SOURCES} mips/jsimd_dspr2.S mips/jsimd.c)
 
 if(CMAKE_POSITION_INDEPENDENT_CODE OR ENABLE_SHARED)
   set_target_properties(simd PROPERTIES POSITION_INDEPENDENT_CODE 1)

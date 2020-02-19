@@ -1040,6 +1040,10 @@ EXTERN(void) jsimd_idct_ifast_rows_dspr2
   (DCTELEM *wsptr, JSAMPARRAY output_buf, JDIMENSION output_col,
    const int *idct_coefs);
 
+EXTERN(void) jsimd_idct_ifast_dspr2
+  (void *dct_table, JCOEFPTR coef_block, JSAMPARRAY output_buf,
+   JDIMENSION output_col);
+
 EXTERN(void) jsimd_idct_ifast_altivec
   (void *dct_table, JCOEFPTR coef_block, JSAMPARRAY output_buf,
    JDIMENSION output_col);
