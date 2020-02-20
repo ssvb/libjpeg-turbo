@@ -32,24 +32,49 @@ typedef short v2i16 __attribute__ ((vector_size(4)));
 typedef signed char v4i8 __attribute__ ((vector_size(4)));
 
 /**********************************************************************/
+/* Emulate the missing DSPr2 instructions on DSPr1 hardware           */
+/**********************************************************************/
 
-static inline v2i16 transpose_upper(v2i16 upper, v2i16 lower)
+#if (__mips_dsp_rev < 2)
+static inline v2i16 __builtin_mips_mul_ph(v2i16 a, v2i16 b)
 {
-  return __builtin_mips_precrq_ph_w((int32_t)upper, (int32_t)lower);
+  return a * b; /* GCC can take care of it */
 }
 
-static inline v2i16 transpose_lower(v2i16 upper, v2i16 lower)
+static inline v2i16 __builtin_mips_mulq_s_ph(v2i16 a, v2i16 b)
 {
-  return __builtin_mips_precr_sra_ph_w((int32_t)upper, (int32_t)lower, 0);
-}
-
-#ifdef __MIPSEL__
-# define UPPER_ROW 4
-# define LOWER_ROW 0
+#ifdef USE_ACCURATE_ROUNDING
+  return __builtin_mips_mulq_rs_ph(a, b);
 #else
-# define UPPER_ROW 0
-# define LOWER_ROW 4
+  return __builtin_mips_precrq_ph_w(__builtin_mips_muleq_s_w_phl(a, b),
+                                    __builtin_mips_muleq_s_w_phr(a, b));
 #endif
+}
+
+static inline v4i8 __builtin_mips_precr_qb_ph(v2i16 a, v2i16 b)
+{
+  return __builtin_mips_precrq_qb_ph(__builtin_mips_shll_ph(a, 8),
+                                     __builtin_mips_shll_ph(b, 8));
+}
+#endif
+
+/**********************************************************************/
+
+static inline void save_transposed_2x2(void *upper_row, void *lower_row,
+                                       v2i16 upper_val, v2i16 lower_val)
+{
+#ifdef __MIPSEL__
+  ((int16_t *)upper_row)[0] = (int16_t)(int32_t)lower_val;
+  ((int16_t *)upper_row)[1] = (int16_t)(int32_t)upper_val;
+  *(v2i16 *)lower_row = __builtin_mips_precrq_ph_w((int32_t)upper_val,
+                                                   (int32_t)lower_val);
+#else
+  *(v2i16 *)upper_row = __builtin_mips_precrq_ph_w((int32_t)upper_val,
+                                                   (int32_t)lower_val);
+  ((int16_t *)lower_row)[0] = (int16_t)(int32_t)upper_val;
+  ((int16_t *)lower_row)[1] = (int16_t)(int32_t)lower_val;
+#endif
+}
 
 /**********************************************************************/
 
@@ -87,17 +112,21 @@ void jsimd_idct_ifast_dspr2(void *dct_table_, JCOEFPTR coef_block,
         (int32_t)row5 | (int32_t)row6 | (int32_t)row7) == 0) {
       /* special case, rows 1-7 are all zero */
       q0 = __builtin_mips_mul_ph(row0, qptr[4 * 0]);
-      q1 = transpose_upper(q0, q0);
-      q2 = transpose_lower(q0, q0);
-
-      wsptr[UPPER_ROW + 0] = q1;
-      wsptr[UPPER_ROW + 1] = q1;
-      wsptr[UPPER_ROW + 2] = q1;
-      wsptr[UPPER_ROW + 3] = q1;
-      wsptr[LOWER_ROW + 0] = q2;
-      wsptr[LOWER_ROW + 1] = q2;
-      wsptr[LOWER_ROW + 2] = q2;
-      wsptr[LOWER_ROW + 3] = q2;
+#ifdef __MIPSEL__
+      q2 = __builtin_mips_precrq_ph_w((int32_t)q0, (int32_t)q0);
+      q1 = __builtin_mips_repl_ph((int32_t)q0);
+#else
+      q1 = __builtin_mips_precrq_ph_w((int32_t)q0, (int32_t)q0);
+      q2 = __builtin_mips_repl_ph((int32_t)q0);
+#endif
+      wsptr[0 + 0] = q1;
+      wsptr[0 + 1] = q1;
+      wsptr[0 + 2] = q1;
+      wsptr[0 + 3] = q1;
+      wsptr[4 + 0] = q2;
+      wsptr[4 + 1] = q2;
+      wsptr[4 + 2] = q2;
+      wsptr[4 + 3] = q2;
 
       inptr += 1;
       qptr  += 1;
@@ -116,56 +145,52 @@ void jsimd_idct_ifast_dspr2(void *dct_table_, JCOEFPTR coef_block,
     row7 = __builtin_mips_mul_ph(row7, qptr[4 * 7]);
 
     /* 1-D IDCT kernel (borrowed from ARM NEON code) */
-    q2   = __builtin_mips_subu_ph(row2, row6);
-    row6 = __builtin_mips_addu_ph(row2, row6);
-    q1   = __builtin_mips_subu_ph(row3, row5);
-    row5 = __builtin_mips_addu_ph(row3, row5);
-    q5   = __builtin_mips_subu_ph(row1, row7);
-    row7 = __builtin_mips_addu_ph(row1, row7);
+    q2   = __builtin_mips_subq_ph(row2, row6);
+    row6 = __builtin_mips_addq_ph(row2, row6);
+    q1   = __builtin_mips_subq_ph(row3, row5);
+    row5 = __builtin_mips_addq_ph(row3, row5);
+    q5   = __builtin_mips_subq_ph(row1, row7);
+    row7 = __builtin_mips_addq_ph(row1, row7);
     q4   = __builtin_mips_mulq_s_ph(q2, XFIX_1_414213562);
     q6   = __builtin_mips_mulq_s_ph(q1, XFIX_2_613125930);
-    q3   = __builtin_mips_addu_ph(q1, q1);
-    q1   = __builtin_mips_subu_ph(q5, q1);
-    row2 = __builtin_mips_addu_ph(q2, q4);
+    q3   = __builtin_mips_addq_ph(q1, q1);
+    q1   = __builtin_mips_subq_ph(q5, q1);
+    row2 = __builtin_mips_addq_ph(q2, q4);
     q4   = __builtin_mips_mulq_s_ph(q1, XFIX_1_847759065);
-    q2   = __builtin_mips_subu_ph(row7, row5);
-    q3   = __builtin_mips_addu_ph(q3, q6);
+    q2   = __builtin_mips_subq_ph(row7, row5);
+    q3   = __builtin_mips_addq_ph(q3, q6);
     q6   = __builtin_mips_mulq_s_ph(q2, XFIX_1_414213562);
-    q1   = __builtin_mips_addu_ph(q1, q4);
+    q1   = __builtin_mips_addq_ph(q1, q4);
     q4   = __builtin_mips_mulq_s_ph(q5, XFIX_1_082392200);
-    row2 = __builtin_mips_subu_ph(row2, row6);
-    q2   = __builtin_mips_addu_ph(q2, q6);
-    q6   = __builtin_mips_subu_ph(row0, row4);
-    row4 = __builtin_mips_addu_ph(row0, row4);
-    row1 = __builtin_mips_addu_ph(q5, q4);
-    q5   = __builtin_mips_addu_ph(q6, row2);
-    row2 = __builtin_mips_subu_ph(q6, row2);
-    q6   = __builtin_mips_addu_ph(row7, row5);
-    row0 = __builtin_mips_addu_ph(row4, row6);
-    q3   = __builtin_mips_subu_ph(q6, q3);
-    row4 = __builtin_mips_subu_ph(row4, row6);
-    q3   = __builtin_mips_subu_ph(q3, q1);
-    q1   = __builtin_mips_subu_ph(row1, q1);
-    q2   = __builtin_mips_addu_ph(q3, q2);
-    row7 = __builtin_mips_subu_ph(row0, q6);
-    q1   = __builtin_mips_addu_ph(q1, q2);
-    row0 = __builtin_mips_addu_ph(row0, q6);
-    row6 = __builtin_mips_addu_ph(q5, q3);
-    row1 = __builtin_mips_subu_ph(q5, q3);
-    row5 = __builtin_mips_subu_ph(row2, q2);
-    row2 = __builtin_mips_addu_ph(row2, q2);
-    row3 = __builtin_mips_subu_ph(row4, q1);
-    row4 = __builtin_mips_addu_ph(row4, q1);
+    row2 = __builtin_mips_subq_ph(row2, row6);
+    q2   = __builtin_mips_addq_ph(q2, q6);
+    q6   = __builtin_mips_subq_ph(row0, row4);
+    row4 = __builtin_mips_addq_ph(row0, row4);
+    row1 = __builtin_mips_addq_ph(q5, q4);
+    q5   = __builtin_mips_addq_ph(q6, row2);
+    row2 = __builtin_mips_subq_ph(q6, row2);
+    q6   = __builtin_mips_addq_ph(row7, row5);
+    row0 = __builtin_mips_addq_ph(row4, row6);
+    q3   = __builtin_mips_subq_ph(q6, q3);
+    row4 = __builtin_mips_subq_ph(row4, row6);
+    q3   = __builtin_mips_subq_ph(q3, q1);
+    q1   = __builtin_mips_subq_ph(row1, q1);
+    q2   = __builtin_mips_addq_ph(q3, q2);
+    row7 = __builtin_mips_subq_ph(row0, q6);
+    q1   = __builtin_mips_addq_ph(q1, q2);
+    row0 = __builtin_mips_addq_ph(row0, q6);
+    row6 = __builtin_mips_addq_ph(q5, q3);
+    row1 = __builtin_mips_subq_ph(q5, q3);
+    row5 = __builtin_mips_subq_ph(row2, q2);
+    row2 = __builtin_mips_addq_ph(row2, q2);
+    row3 = __builtin_mips_subq_ph(row4, q1);
+    row4 = __builtin_mips_addq_ph(row4, q1);
 
     /* transpose them and store as two rows */
-    wsptr[UPPER_ROW + 0] = transpose_upper(row0, row1);
-    wsptr[UPPER_ROW + 1] = transpose_upper(row2, row3);
-    wsptr[UPPER_ROW + 2] = transpose_upper(row4, row5);
-    wsptr[UPPER_ROW + 3] = transpose_upper(row6, row7);
-    wsptr[LOWER_ROW + 0] = transpose_lower(row0, row1);
-    wsptr[LOWER_ROW + 1] = transpose_lower(row2, row3);
-    wsptr[LOWER_ROW + 2] = transpose_lower(row4, row5);
-    wsptr[LOWER_ROW + 3] = transpose_lower(row6, row7);
+    save_transposed_2x2(wsptr + 0 + 0, wsptr + 4 + 0, row0, row1);
+    save_transposed_2x2(wsptr + 0 + 1, wsptr + 4 + 1, row2, row3);
+    save_transposed_2x2(wsptr + 0 + 2, wsptr + 4 + 2, row4, row5);
+    save_transposed_2x2(wsptr + 0 + 3, wsptr + 4 + 3, row6, row7);
 
     inptr += 1;
     qptr  += 1;
@@ -188,87 +213,83 @@ void jsimd_idct_ifast_dspr2(void *dct_table_, JCOEFPTR coef_block,
     row7 = wsptr[4 * 7];
 
     /* 1-D IDCT kernel (borrowed from ARM NEON code) */
-    q2   = __builtin_mips_subu_ph(row2, row6);
-    row6 = __builtin_mips_addu_ph(row2, row6);
-    q1   = __builtin_mips_subu_ph(row3, row5);
-    row5 = __builtin_mips_addu_ph(row3, row5);
-    q5   = __builtin_mips_subu_ph(row1, row7);
-    row7 = __builtin_mips_addu_ph(row1, row7);
+    q2   = __builtin_mips_subq_ph(row2, row6);
+    row6 = __builtin_mips_addq_ph(row2, row6);
+    q1   = __builtin_mips_subq_ph(row3, row5);
+    row5 = __builtin_mips_addq_ph(row3, row5);
+    row0 = __builtin_mips_addq_ph(row0, (v2i16)0x00800080 << 5); /* +0x80 */
+    q5   = __builtin_mips_subq_ph(row1, row7);
+    row7 = __builtin_mips_addq_ph(row1, row7);
     q4   = __builtin_mips_mulq_s_ph(q2, XFIX_1_414213562);
     q6   = __builtin_mips_mulq_s_ph(q1, XFIX_2_613125930);
-    q3   = __builtin_mips_addu_ph(q1, q1);
-    q1   = __builtin_mips_subu_ph(q5, q1);
-    row2 = __builtin_mips_addu_ph(q2, q4);
+    q3   = __builtin_mips_addq_ph(q1, q1);
+    q1   = __builtin_mips_subq_ph(q5, q1);
+    row2 = __builtin_mips_addq_ph(q2, q4);
     q4   = __builtin_mips_mulq_s_ph(q1, XFIX_1_847759065);
-    q2   = __builtin_mips_subu_ph(row7, row5);
-    q3   = __builtin_mips_addu_ph(q3, q6);
+    q2   = __builtin_mips_subq_ph(row7, row5);
+    q3   = __builtin_mips_addq_ph(q3, q6);
     q6   = __builtin_mips_mulq_s_ph(q2, XFIX_1_414213562);
-    q1   = __builtin_mips_addu_ph(q1, q4);
+    q1   = __builtin_mips_addq_ph(q1, q4);
     q4   = __builtin_mips_mulq_s_ph(q5, XFIX_1_082392200);
-    row2 = __builtin_mips_subu_ph(row2, row6);
-    q2   = __builtin_mips_addu_ph(q2, q6);
-    q6   = __builtin_mips_subu_ph(row0, row4);
-    row4 = __builtin_mips_addu_ph(row0, row4);
-    row1 = __builtin_mips_addu_ph(q5, q4);
-    q5   = __builtin_mips_addu_ph(q6, row2);
-    row2 = __builtin_mips_subu_ph(q6, row2);
-    q6   = __builtin_mips_addu_ph(row7, row5);
-    row0 = __builtin_mips_addu_ph(row4, row6);
-    q3   = __builtin_mips_subu_ph(q6, q3);
-    row4 = __builtin_mips_subu_ph(row4, row6);
-    q3   = __builtin_mips_subu_ph(q3, q1);
-    q1   = __builtin_mips_subu_ph(row1, q1);
-    q2   = __builtin_mips_addu_ph(q3, q2);
-    row7 = __builtin_mips_subu_ph(row0, q6);
-    q1   = __builtin_mips_addu_ph(q1, q2);
-    row0 = __builtin_mips_addu_ph(row0, q6);
-    row6 = __builtin_mips_addu_ph(q5, q3);
-    row1 = __builtin_mips_subu_ph(q5, q3);
-    row5 = __builtin_mips_subu_ph(row2, q2);
-    row2 = __builtin_mips_addu_ph(row2, q2);
-    row3 = __builtin_mips_subu_ph(row4, q1);
-    row4 = __builtin_mips_addu_ph(row4, q1);
+    row2 = __builtin_mips_subq_ph(row2, row6);
+    q2   = __builtin_mips_addq_ph(q2, q6);
+    q6   = __builtin_mips_subq_ph(row0, row4);
+    row4 = __builtin_mips_addq_ph(row0, row4);
+    row1 = __builtin_mips_addq_ph(q5, q4);
+    q5   = __builtin_mips_addq_ph(q6, row2);
+    row2 = __builtin_mips_subq_ph(q6, row2);
+    q6   = __builtin_mips_addq_ph(row7, row5);
+    row0 = __builtin_mips_addq_ph(row4, row6);
+    q3   = __builtin_mips_subq_ph(q6, q3);
+    row4 = __builtin_mips_subq_ph(row4, row6);
+    q3   = __builtin_mips_subq_ph(q3, q1);
+    q1   = __builtin_mips_subq_ph(row1, q1);
+    q2   = __builtin_mips_addq_ph(q3, q2);
+    row7 = __builtin_mips_subq_ph(row0, q6);
+    q1   = __builtin_mips_addq_ph(q1, q2);
+    row0 = __builtin_mips_addq_ph(row0, q6);
+    row6 = __builtin_mips_addq_ph(q5, q3);
+    row1 = __builtin_mips_subq_ph(q5, q3);
+    row5 = __builtin_mips_subq_ph(row2, q2);
+    row2 = __builtin_mips_addq_ph(row2, q2);
+    row3 = __builtin_mips_subq_ph(row4, q1);
+    row4 = __builtin_mips_addq_ph(row4, q1);
 
-    /* range limit by using left shift with saturation */
-    row0 = __builtin_mips_shll_s_ph(row0, 3);
-    row1 = __builtin_mips_shll_s_ph(row1, 3);
-    row2 = __builtin_mips_shll_s_ph(row2, 3);
-    row3 = __builtin_mips_shll_s_ph(row3, 3);
-    row4 = __builtin_mips_shll_s_ph(row4, 3);
-    row5 = __builtin_mips_shll_s_ph(row5, 3);
-    row6 = __builtin_mips_shll_s_ph(row6, 3);
-    row7 = __builtin_mips_shll_s_ph(row7, 3);
+    /* shift into the right position for a fancy PRECRU_S_QB.PH instruction */
+    row0 = __builtin_mips_shll_s_ph(row0, 2);
+    row1 = __builtin_mips_shll_s_ph(row1, 2);
+    row2 = __builtin_mips_shll_s_ph(row2, 2);
+    row3 = __builtin_mips_shll_s_ph(row3, 2);
+    row4 = __builtin_mips_shll_s_ph(row4, 2);
+    row5 = __builtin_mips_shll_s_ph(row5, 2);
+    row6 = __builtin_mips_shll_s_ph(row6, 2);
+    row7 = __builtin_mips_shll_s_ph(row7, 2);
 
-    /* pack into bytes and add 0x80 to each of them */
+    /* pack into unsigned bytes with saturation (range limit to 0-255) */
 #ifdef __MIPSEL__
-    q0 = (v2i16)__builtin_mips_precrq_qb_ph(row3, row2);
-    q1 = (v2i16)__builtin_mips_precrq_qb_ph(row1, row0);
-    q4 = (v2i16)__builtin_mips_precrq_qb_ph(row7, row6);
-    q5 = (v2i16)__builtin_mips_precrq_qb_ph(row5, row4);
+    q0 = (v2i16)__builtin_mips_precrqu_s_qb_ph(row3, row2);
+    q1 = (v2i16)__builtin_mips_precrqu_s_qb_ph(row1, row0);
+    q2 = (v2i16)__builtin_mips_precrqu_s_qb_ph(row7, row6);
+    q3 = (v2i16)__builtin_mips_precrqu_s_qb_ph(row5, row4);
 #else
-    q0 = (v2i16)__builtin_mips_precrq_qb_ph(row0, row1);
-    q1 = (v2i16)__builtin_mips_precrq_qb_ph(row2, row3);
-    q4 = (v2i16)__builtin_mips_precrq_qb_ph(row4, row5);
-    q5 = (v2i16)__builtin_mips_precrq_qb_ph(row6, row7);
+    q0 = (v2i16)__builtin_mips_precrqu_s_qb_ph(row0, row1);
+    q1 = (v2i16)__builtin_mips_precrqu_s_qb_ph(row2, row3);
+    q2 = (v2i16)__builtin_mips_precrqu_s_qb_ph(row4, row5);
+    q3 = (v2i16)__builtin_mips_precrqu_s_qb_ph(row6, row7);
 #endif
 
-    q2 = (v2i16)__builtin_mips_precrq_qb_ph(q0, q1);
-    q3 = (v2i16)__builtin_mips_precr_qb_ph(q0, q1);
-    q2 = (v2i16)__builtin_mips_addu_qb((v4i8)q2, (v4i8)0x80808080);
-    q3 = (v2i16)__builtin_mips_addu_qb((v4i8)q3, (v4i8)0x80808080);
-
-    q6 = (v2i16)__builtin_mips_precrq_qb_ph(q4, q5);
-    q7 = (v2i16)__builtin_mips_precr_qb_ph(q4, q5);
-    q6 = (v2i16)__builtin_mips_addu_qb((v4i8)q6, (v4i8)0x80808080);
-    q7 = (v2i16)__builtin_mips_addu_qb((v4i8)q7, (v4i8)0x80808080);
+    q4 = (v2i16)__builtin_mips_precrq_qb_ph(q0, q1);
+    q5 = (v2i16)__builtin_mips_precrq_qb_ph(q2, q3);
+    q6 = (v2i16)__builtin_mips_precr_qb_ph(q0, q1);
+    q7 = (v2i16)__builtin_mips_precr_qb_ph(q2, q3);
 
     /* store to the destination */
     dest = (v2i16 *)(*output_buf++ + output_col);
-    *dest++ = q2;
-    *dest++ = q6;
+    *dest++ = q4;
+    *dest++ = q5;
 
     dest = (v2i16 *)(*output_buf++ + output_col);
-    *dest++ = q3;
+    *dest++ = q6;
     *dest++ = q7;
 
     wsptr += 1;
