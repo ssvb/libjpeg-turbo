@@ -26,6 +26,7 @@
 #define JSIMD_ALTIVEC  0x40
 #define JSIMD_AVX2     0x80
 #define JSIMD_MMI      0x100
+#define JSIMD_DSP      0x200
 
 /* SIMD Ext: retrieve SIMD/CPU information */
 EXTERN(unsigned int) jpeg_simd_cpu_support(void);
@@ -1041,6 +1042,10 @@ EXTERN(void) jsimd_idct_ifast_rows_dspr2
    const int *idct_coefs);
 
 EXTERN(void) jsimd_idct_ifast_dspr2
+  (void *dct_table, JCOEFPTR coef_block, JSAMPARRAY output_buf,
+   JDIMENSION output_col);
+
+EXTERN(void) jsimd_idct_ifast_dsp
   (void *dct_table, JCOEFPTR coef_block, JSAMPARRAY output_buf,
    JDIMENSION output_col);
 

@@ -304,11 +304,16 @@ if(NOT HAVE_DSPR2)
   return()
 endif()
 
-set(SIMD_SOURCES mips/jidctfst-dspr2.c)
-set_source_files_properties(${SIMD_SOURCES} PROPERTIES
+set(SIMD_SOURCES_DSP mips/jidctfst-dsp.c)
+set_source_files_properties(${SIMD_SOURCES_DSP} PROPERTIES
+  COMPILE_FLAGS -mdsp)
+
+set(SIMD_SOURCES_DSPR2 mips/jidctfst-dspr2.c)
+set_source_files_properties(${SIMD_SOURCES_DSPR2} PROPERTIES
   COMPILE_FLAGS -mdspr2)
 
-add_library(simd OBJECT ${SIMD_SOURCES} mips/jsimd_dspr2.S mips/jsimd.c)
+add_library(simd OBJECT ${SIMD_SOURCES_DSP} ${SIMD_SOURCES_DSPR2}
+  mips/jsimd_dspr2.S mips/jsimd.c)
 
 if(CMAKE_POSITION_INDEPENDENT_CODE OR ENABLE_SHARED)
   set_target_properties(simd PROPERTIES POSITION_INDEPENDENT_CODE 1)

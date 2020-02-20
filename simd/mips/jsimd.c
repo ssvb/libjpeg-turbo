@@ -73,7 +73,9 @@ init_simd(void)
   simd_support = 0;
 
 #if defined(__mips_dsp) && (__mips_dsp_rev >= 2)
-  simd_support |= JSIMD_DSPR2;
+  simd_support |= JSIMD_DSP | JSIMD_DSPR2;
+#elif defined(__mips_dsp)
+  simd_support |= JSIMD_DSP;
 #elif defined(__linux__)
   /* We still have a chance to use MIPS DSPR2 regardless of globally used
    * -mdspr2 options passed to gcc by performing runtime detection via
@@ -83,6 +85,9 @@ init_simd(void)
 
 #ifndef NO_GETENV
   /* Force different settings through environment variables */
+  env = getenv("JSIMD_FORCEDSP");
+  if ((env != NULL) && (strcmp(env, "1") == 0))
+    simd_support = JSIMD_DSP;
   env = getenv("JSIMD_FORCEDSPR2");
   if ((env != NULL) && (strcmp(env, "1") == 0))
     simd_support = JSIMD_DSPR2;
@@ -1032,6 +1037,9 @@ jsimd_can_idct_ifast(void)
   if (IFAST_SCALE_BITS != 2)
     return 0;
 
+  if (simd_support & JSIMD_DSP)
+    return 1;
+
   if (simd_support & JSIMD_DSPR2)
     return 1;
 
@@ -1069,7 +1077,11 @@ jsimd_idct_ifast(j_decompress_ptr cinfo, jpeg_component_info *compptr,
                  JCOEFPTR coef_block, JSAMPARRAY output_buf,
                  JDIMENSION output_col)
 {
-  jsimd_idct_ifast_dspr2(coef_block, compptr->dct_table, output_buf,
+  if (simd_support & JSIMD_DSPR2)
+    jsimd_idct_ifast_dspr2(coef_block, compptr->dct_table, output_buf,
+                           output_col);
+  else
+    jsimd_idct_ifast_dsp(coef_block, compptr->dct_table, output_buf,
                          output_col);
 }
 
